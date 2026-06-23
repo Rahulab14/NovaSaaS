@@ -4,8 +4,8 @@
   "description": "Production observability stack for NovaSaaS using Express, Winston, Prometheus, Grafana and Alertmanager",
   "main": "app.js",
   "scripts": {
-    "start": "node app.js",
-    "dev": "node app.js"
+    "start": "node src/app.js",
+    "dev": "node src/app.js"
   },
   "keywords": [
     "novasaas",

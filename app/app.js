@@ -1,23 +1,22 @@
 const express = require("express");
 const promClient = require("prom-client");
-const { v4: uuidv4 } = require("uuid");
 const logger = require("./logger");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// -----------------------------
+// ================================
 // Prometheus Registry
-// -----------------------------
+// ================================
 const register = new promClient.Registry();
 
 promClient.collectDefaultMetrics({
   register,
 });
 
-// -----------------------------
+// ================================
 // Metrics
-// -----------------------------
+// ================================
 
 const httpRequestsTotal = new promClient.Counter({
   name: "http_requests_total",
@@ -54,41 +53,35 @@ register.registerMetric(httpRequestsTotal);
 register.registerMetric(httpRequestDuration);
 register.registerMetric(httpErrorsTotal);
 
-// -----------------------------
-// Request ID Middleware
-// -----------------------------
-app.use((req, res, next) => {
-  req.requestId = uuidv4();
-  next();
-});
+// ================================
+// Request Logging Middleware
+// ================================
 
-// -----------------------------
-// Logging + Metrics Middleware
-// -----------------------------
 app.use((req, res, next) => {
-  const start = Date.now();
+  const startTime = Date.now();
 
   res.on("finish", () => {
-    const durationMs = Date.now() - start;
+    const durationMs = Date.now() - startTime;
     const durationSeconds = durationMs / 1000;
+
+    const route = req.route?.path || req.path;
 
     httpRequestsTotal.inc({
       method: req.method,
-      route: req.route?.path || req.path,
+      route,
       status_code: res.statusCode,
     });
 
     httpRequestDuration.observe(
       {
         method: req.method,
-        route: req.route?.path || req.path,
+        route,
         status_code: res.statusCode,
       },
       durationSeconds
     );
 
     logger.info({
-      requestId: req.requestId,
       method: req.method,
       path: req.originalUrl,
       statusCode: res.statusCode,
@@ -100,68 +93,72 @@ app.use((req, res, next) => {
   next();
 });
 
-// -----------------------------
+// ================================
 // Routes
-// -----------------------------
+// ================================
 
+// Home
 app.get("/", (req, res) => {
-  res.json({
-    message: "Service Running",
+  res.status(200).json({
+    service: "NovaSaaS",
+    status: "Running",
+    version: "1.0.0",
   });
 });
 
+// Health Check
 app.get("/health", (req, res) => {
   res.status(200).json({
     status: "UP",
   });
 });
 
-// Endpoint used to trigger alerts
+// Failure Endpoint (Used for Alert Testing)
 app.get("/fail", (req, res) => {
   httpErrorsTotal.inc({
     error_type: "5xx",
   });
 
   logger.error({
-    requestId: req.requestId,
-    message: "Intentional failure endpoint triggered",
+    route: "/fail",
     statusCode: 500,
+    message: "Intentional failure endpoint triggered",
     timestamp: new Date().toISOString(),
   });
 
   res.status(500).json({
+    success: false,
     error: "Internal Server Error",
+    message: "Intentional failure for alert testing",
   });
 });
 
-// -----------------------------
 // Metrics Endpoint
-// -----------------------------
 app.get("/metrics", async (req, res) => {
   try {
     res.set("Content-Type", register.contentType);
     res.end(await register.metrics());
   } catch (error) {
     logger.error({
-      requestId: req.requestId,
       message: error.message,
       stack: error.stack,
+      timestamp: new Date().toISOString(),
     });
 
     res.status(500).end();
   }
 });
 
-// -----------------------------
+// ================================
 // Global Error Handler
-// -----------------------------
+// ================================
+
 app.use((err, req, res, next) => {
   httpErrorsTotal.inc({
     error_type: "5xx",
   });
 
   logger.error({
-    requestId: req.requestId,
     message: err.message,
     stack: err.stack,
     timestamp: new Date().toISOString(),
@@ -172,12 +169,14 @@ app.use((err, req, res, next) => {
   });
 });
 
-// -----------------------------
+// ================================
 // Start Server
-// -----------------------------
+// ================================
+
 app.listen(PORT, () => {
   logger.info({
-    message: `Server running on port ${PORT}`,
+    service: "NovaSaaS",
+    message: `NovaSaaS Observability Service running on port ${PORT}`,
     timestamp: new Date().toISOString(),
   });
 });
