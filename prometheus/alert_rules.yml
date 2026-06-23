@@ -1,0 +1,22 @@
+groups:
+  - name: novasaas-alerts
+
+    rules:
+      - alert: HighErrorRate
+
+        expr: |
+          (
+            sum(rate(http_errors_total[1m]))
+            /
+            sum(rate(http_requests_total[1m]))
+          ) * 100 > 2
+
+        for: 1m
+
+        labels:
+          severity: critical
+
+        annotations:
+          summary: "NovaSaaS Error Rate Above 2%"
+          description: "More than 2% of requests are failing during the last minute."
+          runbook: "https://example.com/runbook"
